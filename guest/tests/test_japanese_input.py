@@ -53,6 +53,16 @@ class JapaneseInputTests(unittest.TestCase):
                 module.initialize(profile, factory, cmdline, lang)
                 self.assertEqual(profile.read_text(), updated)
 
+    def test_preserves_korean_first_group_on_jis(self):
+        factory = GUEST / "fragments/fcitx5-profile.ini"
+        korean = factory.read_text().replace("0=Default\n1=Korean\n", "0=Korean\n1=Default\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "profile"
+            profile.write_text(korean)
+            module.initialize(profile, factory, "tryomarchy.keyboard=jis", "ko_KR.UTF-8", "jp")
+            self.assertEqual(profile.read_text(), korean)
+            self.assertFalse((profile.parent / "config").exists())
+
     def test_preserves_custom_profiles_missing_profiles_and_symlinks(self):
         factory = GUEST / "fragments/fcitx5-profile.ini"
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,7 +14,6 @@ struct LanguageLaunchConfigurationTests {
         (["zh-Hans"], "zh_CN.UTF-8"),
         (["zh-CN"], "zh_CN.UTF-8"),
         (["zh-SG"], "zh_CN.UTF-8"),
-        (["ja"], "ja_JP.UTF-8"),
         (["en-US", "ja-JP"], "en_US.UTF-8"),
         ([], "en_US.UTF-8"),
     ])

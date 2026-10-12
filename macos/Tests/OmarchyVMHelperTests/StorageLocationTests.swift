@@ -1063,10 +1063,12 @@ struct SavedGuestLanguageSupportTests {
             #expect(QEMUGPUStorageSpaceEstimate.supportsLanguageSelection(environment: environment, metrics: supportedMetrics, requiresKorean: true) == korean)
             #expect(QEMUGPUStorageSpaceEstimate.supportsLanguageSelection(environment: environment, metrics: supportedMetrics, requiresJapanese: true) == japanese)
         }
+        try Data("tryomarchy.locale_support=4\n".utf8).write(to: commandLine)
         // A custom storage preference must select the same VM, too.
         let preference = StorageLocationPreference(containerPath: root.path)
         #expect(QEMUGPUStorageSpaceEstimate.supportsLanguageSelection(environment: [:], metrics: supportedMetrics, preference: preference))
         #expect(QEMUGPUStorageSpaceEstimate.supportsLanguageSelection(environment: [:], metrics: supportedMetrics, preference: preference, requiresKorean: true))
+        #expect(QEMUGPUStorageSpaceEstimate.supportsLanguageSelection(environment: [:], metrics: supportedMetrics, preference: preference, requiresJapanese: true))
         try FileManager.default.removeItem(at: commandLine)
         let target = root.appendingPathComponent("untrusted-command-line")
         try Data("tryomarchy.locale_support=3\n".utf8).write(to: target)
