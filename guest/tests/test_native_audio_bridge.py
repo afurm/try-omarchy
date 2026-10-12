@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+import subprocess
 import unittest
 from unittest import mock
 
@@ -31,7 +32,7 @@ class PactlStub:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], bool]] = []
         self.next_module_id = 100
-        self.loaded_modules: set[str] = set()
+        self.loaded_modules: dict[str, str] = {}
         self.default_sink = self.transport_sink
         self.default_source = self.transport_source
 
@@ -42,14 +43,14 @@ class PactlStub:
         if arguments == ("list", "short", "sources"):
             return f"11\t{self.transport_source}\tmodule-alsa-card.c\ts16le 2ch 48000Hz\tRUNNING\n"
         if arguments == ("list", "short", "modules"):
-            return "\n".join(f"{module_id}\tmodule" for module_id in self.loaded_modules)
+            return "\n".join(f"{module_id}\t{record}" for module_id, record in self.loaded_modules.items())
         if arguments and arguments[0] == "load-module":
             module_id = str(self.next_module_id)
             self.next_module_id += 1
-            self.loaded_modules.add(module_id)
+            self.loaded_modules[module_id] = f"{arguments[1]}\t{' '.join(arguments[2:])}"
             return module_id
         if len(arguments) == 2 and arguments[0] == "unload-module":
-            self.loaded_modules.discard(arguments[1])
+            self.loaded_modules.pop(arguments[1], None)
             return ""
         if len(arguments) == 2 and arguments[0] == "set-default-sink":
             self.default_sink = arguments[1]
@@ -232,6 +233,49 @@ class PipeWireMirrorTests(unittest.TestCase):
                 {"type": "select", "direction": "input", "deviceUID": "studio-input"},
             ],
         )
+
+    def test_rebuild_unloads_remaps_left_by_an_earlier_bridge(self) -> None:
+        """A restarted bridge must not stack a second set of host endpoints."""
+        mirror, pactl, _ = self.make_mirror()
+        pactl.loaded_modules = {
+            "7": "module-alsa-card\tdevice_id=0",
+            "8": f"module-remap-sink\tmaster={pactl.transport_sink} sink_name=other_remap",
+            "40": f"module-remap-sink\tmaster={pactl.transport_sink} sink_name={bridge.endpoint_name('output', None)}",
+            "41": f"module-remap-source\tmaster={pactl.transport_source} source_name={bridge.endpoint_name('input', None)}",
+        }
+
+        mirror.apply(catalog_message())
+
+        self.assertEqual(
+            [call[1] for call in pactl.matching_calls("unload-module")],
+            ["40", "41"],
+        )
+        self.assertIn("7", pactl.loaded_modules)
+        self.assertIn("8", pactl.loaded_modules)
+        self.assertEqual(len(pactl.loaded_modules), 2 + 6)
+
+    def test_pactl_timeout_is_a_retryable_error(self) -> None:
+        """A slow pactl must not kill the bridge and trigger a restart loop."""
+        timeout = subprocess.TimeoutExpired(["pactl", "get-default-sink"], 10)
+        with mock.patch.object(bridge.subprocess, "run", side_effect=timeout):
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                bridge.run_pactl("get-default-sink", check=False)
+
+    def test_close_unloads_every_module_when_one_unload_times_out(self) -> None:
+        mirror, pactl, _ = self.make_mirror()
+        mirror.apply(catalog_message())
+        loaded = list(mirror.module_ids)
+
+        def slow_first_unload(*arguments: str, check: bool = True) -> str:
+            if arguments == ("unload-module", loaded[-1]):
+                raise RuntimeError("pactl unload-module: timed out")
+            return pactl(*arguments, check=check)
+
+        with mock.patch.object(bridge, "run_pactl", side_effect=slow_first_unload):
+            mirror.close()
+
+        self.assertEqual(set(pactl.loaded_modules), {loaded[-1]})
+        self.assertEqual(mirror.module_ids, [])
 
     def assert_friendly_loads(
         self,
