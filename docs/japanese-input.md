@@ -9,7 +9,11 @@ VM is focused.
 
 On a JIS Mac, owner setup preselects **Japanese**. You can choose another layout;
 that explicit choice is preserved. The host geometry selects `applealu_jis`, and
-the selected layout determines the punctuation and direct-input keyboard.
+the selected layout determines the punctuation and direct-input keyboard. With
+the default Japanese layout, `apple:jp_oadg109a` supplies backslash on ろ and
+underscore on Shift+ろ, while ¥ remains a distinct yen sign. Existing keyboard
+options are preserved; custom layouts, variants, keymaps, and explicit Apple
+JIS backslash options are left alone.
 
 Before Fcitx first starts, an untouched factory profile on a JIS Mac puts Mozc
 before Chewing. The same Japanese default applies when the guest's initial
@@ -57,7 +61,8 @@ fcitx5-configtool
 Add Mozc and the keyboard layout matching your physical keyboard. Keep the
 keyboard item first and put Mozc before other conversion engines if Japanese
 should be the default. For JIS punctuation, select the Japanese layout and set
-`kb_model = "applealu_jis"` in your Hyprland input overrides as described in
+`kb_model = "applealu_jis"` in your Hyprland input overrides, and append
+`apple:jp_oadg109a` to `kb_options` for backslash/underscore on ろ, as described in
 [Mac keyboard](mac-keyboard.md).
 
 For JIS keys, configure the Fcitx global options:
@@ -87,7 +92,7 @@ command can send `lang1` and `lang2`, which reach virtio-keyboard as Linux 122 a
 compositor, Fcitx, and application path without a physical Japanese keyboard.
 It does not test physical Mac hardware or Cocoa event delivery.
 
-Test Chromium's Wayland textarea, a GTK4 entry, and a native Wayland terminal:
+Test Chromium's Wayland textarea, GTK4 and Qt6 entries, and a native Wayland terminal:
 activate Japanese, type `nihongo`, convert to 日本語, commit, deactivate, and type
 `abc`. Repeat each mode key to verify idempotence and type immediately after
 英数 to check ordering. Check a candidate popup and capture it with guest `grim`;

@@ -708,8 +708,8 @@ def main() -> None:
     )
     check(
         'kb_model = "applealu_" .. geometry' in apple_keyboard
-        and "kb_layout" not in apple_keyboard
-        and "kb_variant" not in apple_keyboard
+        and "kb_layout =" not in apple_keyboard
+        and "kb_variant =" not in apple_keyboard
         and 'dofile("/usr/share/try-omarchy/apple-keyboard-input.lua")' in materialize,
         "skel input loads Apple keyboard geometry without overriding layout",
     )
