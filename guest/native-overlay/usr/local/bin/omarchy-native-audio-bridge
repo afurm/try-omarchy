@@ -134,7 +134,9 @@ class PipeWireMirror:
             tuple((record["deviceUID"], record["name"]) for record in inputs),
         )
 
-        if inventory != self.inventory:
+        # Catalog retries bypass poll_selection(), so check the cached graph
+        # here too: PipeWire may have restarted during a selection timeout.
+        if inventory != self.inventory or not set(self.module_ids).issubset(loaded_module_ids()):
             self._rebuild(outputs, inputs)
             self.inventory = inventory
         self._set_selected("output", selected_output)

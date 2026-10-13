@@ -53,9 +53,13 @@ class PactlStub:
             self.loaded_modules.pop(arguments[1], None)
             return ""
         if len(arguments) == 2 and arguments[0] == "set-default-sink":
+            if not any(f"sink_name={arguments[1]} " in record for record in self.loaded_modules.values()):
+                raise RuntimeError("pactl set-default-sink: No such entity")
             self.default_sink = arguments[1]
             return ""
         if len(arguments) == 2 and arguments[0] == "set-default-source":
+            if not any(f"source_name={arguments[1]} " in record for record in self.loaded_modules.values()):
+                raise RuntimeError("pactl set-default-source: No such entity")
             self.default_source = arguments[1]
             return ""
         if arguments == ("get-default-sink",):
@@ -233,6 +237,52 @@ class PipeWireMirrorTests(unittest.TestCase):
                 {"type": "select", "direction": "input", "deviceUID": "studio-input"},
             ],
         )
+
+    def test_catalog_retry_recovers_when_pipewire_restarts_during_selection(self) -> None:
+        for command in ("set-default-sink", "set-default-source"):
+            with self.subTest(command=command):
+                mirror, pactl, _ = self.make_mirror()
+                restarted = False
+
+                def restart_during_selection(*arguments: str, check: bool = True) -> str:
+                    nonlocal restarted
+                    if arguments[0] == command and not restarted:
+                        restarted = True
+                        pactl.loaded_modules.clear()
+                        raise RuntimeError(f"pactl {command}: timed out")
+                    return pactl(*arguments, check=check)
+
+                with mock.patch.object(bridge, "run_pactl", side_effect=restart_during_selection):
+                    with self.assertRaisesRegex(RuntimeError, "timed out"):
+                        mirror.apply(catalog_message())
+                    mirror.apply(catalog_message())
+
+                self.assertEqual(len(pactl.loaded_modules), 6)
+                self.assertEqual(pactl.default_sink, bridge.endpoint_name("output", "studio-output"))
+                self.assertEqual(pactl.default_source, bridge.endpoint_name("input", "macbook-input"))
+                mirror.close()
+
+    def test_catalog_retry_keeps_healthy_endpoints_after_selection_timeout(self) -> None:
+        mirror, pactl, _ = self.make_mirror()
+        timed_out = False
+
+        def slow_selection(*arguments: str, check: bool = True) -> str:
+            nonlocal timed_out
+            if arguments[0] == "set-default-sink" and not timed_out:
+                timed_out = True
+                raise RuntimeError("pactl set-default-sink: timed out")
+            return pactl(*arguments, check=check)
+
+        with mock.patch.object(bridge, "run_pactl", side_effect=slow_selection):
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                mirror.apply(catalog_message())
+            original_modules = set(pactl.loaded_modules)
+            mirror.apply(catalog_message())
+
+        self.assertEqual(set(pactl.loaded_modules), original_modules)
+        self.assertEqual(pactl.matching_calls("unload-module"), [])
+        self.assertEqual(pactl.default_sink, bridge.endpoint_name("output", "studio-output"))
+        self.assertEqual(pactl.default_source, bridge.endpoint_name("input", "macbook-input"))
 
     def test_rebuild_unloads_remaps_left_by_an_earlier_bridge(self) -> None:
         """A restarted bridge must not stack a second set of host endpoints."""
